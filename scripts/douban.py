@@ -151,7 +151,6 @@ def insert_movie():
             notion_helper.create_page(
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
-
 def insert_book():
     notion_books = notion_helper.query_all(database_id=notion_helper.book_database_id)
     notion_book_dict = {}
@@ -166,7 +165,7 @@ def insert_book():
             "评分": book.get("评分"),
             "page_id": i.get("id")
         }
-    print(f"Fetched {len(notion_book_dict)} books from Notion.")
+    print(f"notion {len(notion_book_dict)}")
     results = []
     for i in book_status.keys():
         results.extend(fetch_subjects(douban_name, "book", i))
@@ -175,8 +174,10 @@ def insert_book():
         subject = result.get("subject")
         book["书名"] = subject.get("title")
         create_time = result.get("create_time")
-        create_time = pendulum.parse(create_time, tz=utils.tz).replace(second=0)
-        book["日期"] = create_time.int_timestamp
+        create_time = pendulum.parse(create_time, tz=utils.tz)
+        start_date = create_time.to_iso8601_string()
+        end_date = create_time.end_of('day').to_iso8601_string()
+
         book["豆瓣链接"] = subject.get("url")
         book["状态"] = book_status.get(result.get("status"))
         if result.get("rating"):
@@ -186,12 +187,16 @@ def insert_book():
         if notion_book_dict.get(book.get("豆瓣链接")):
             notion_book = notion_book_dict.get(book.get("豆瓣链接"))
             if (
-                notion_book.get("日期") != book.get("日期")
+                notion_book.get("日期") != {"start": start_date, "end": end_date}
                 or notion_book.get("短评") != book.get("短评")
                 or notion_book.get("状态") != book.get("状态")
                 or notion_book.get("评分") != book.get("评分")
             ):
                 properties = utils.get_properties(book, book_properties_type_dict)
+                properties["日期"] = {
+                    "start": start_date,
+                    "end": end_date
+                }
                 notion_helper.update_page(
                     page_id=notion_book.get("page_id"),
                     properties=properties
@@ -221,6 +226,10 @@ def insert_book():
                     for x in subject.get("author")[0:100]
                 ]
             properties = utils.get_properties(book, book_properties_type_dict)
+            properties["日期"] = {
+                "start": start_date,
+                "end": end_date
+            }
             parent = {
                 "database_id": notion_helper.book_database_id,
                 "type": "database_id",
@@ -228,6 +237,7 @@ def insert_book():
             notion_helper.create_page(
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
