@@ -176,12 +176,9 @@ def insert_book():
         book["书名"] = subject.get("title")
         create_time = result.get("create_time")
         create_time = pendulum.parse(create_time, tz=utils.tz).replace(second=0)
+        book["日期"] = create_time.to_iso8601_string()
         book["豆瓣链接"] = subject.get("url")
         book["状态"] = book_status.get(result.get("status"))
-        book["日期"] = {
-            "start": create_time.to_iso8601_string(),
-            "end": None if book["状态"] != "读过" else create_time.to_iso8601_string()
-        }
         if result.get("rating"):
             book["评分"] = rating.get(result.get("rating").get("value"))
         if result.get("comment"):
@@ -224,10 +221,12 @@ def insert_book():
                     for x in subject.get("author")[0:100]
                 ]
             properties = utils.get_properties(book, book_properties_type_dict)
+            parent = {
+                "database_id": notion_helper.book_database_id,
+                "type": "database_id",
+            }
             notion_helper.create_page(
-                parent={"database_id": notion_helper.book_database_id, "type": "database_id"},
-                properties=properties,
-                icon=get_icon(cover)
+                parent=parent, properties=properties, icon=get_icon(cover)
             )
 
 if __name__ == "__main__":
