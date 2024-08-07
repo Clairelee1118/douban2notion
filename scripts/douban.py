@@ -176,7 +176,7 @@ def insert_book():
         book["书名"] = subject.get("title")
         create_time = result.get("create_time")
         create_time = pendulum.parse(create_time, tz=utils.tz).replace(second=0)
-        book["日期"] = create_time.to_iso8601_string()
+        book["日期"] = create_time.int_timestamp
         book["豆瓣链接"] = subject.get("url")
         book["状态"] = book_status.get(result.get("status"))
         if result.get("rating"):
@@ -241,3 +241,4 @@ if __name__ == "__main__":
         insert_movie()
     else:
         insert_book()
+
