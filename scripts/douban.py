@@ -110,8 +110,10 @@ def insert_movie():
             ):
                 properties = utils.get_properties(movie, movie_properties_type_dict)
                 properties["日期"] = {
-                    "start": create_time.to_iso8601_string(),
-                    "end": None
+                    "date": {
+                        "start": create_time.to_iso8601_string(),
+                        "end": None
+                    }
                 }
                 notion_helper.update_page(
                     page_id=notion_movie.get("page_id"),
@@ -148,8 +150,10 @@ def insert_movie():
                 ]
             properties = utils.get_properties(movie, movie_properties_type_dict)
             properties["日期"] = {
-                "start": create_time.to_iso8601_string(),
-                "end": None
+                "date": {
+                    "start": create_time.to_iso8601_string(),
+                    "end": None
+                }
             }
             parent = {
                 "database_id": notion_helper.movie_database_id,
@@ -208,8 +212,10 @@ def insert_book():
             ):
                 properties = utils.get_properties(book, book_properties_type_dict)
                 properties["日期"] = {
-                    "start": start_date,
-                    "end": end_date
+                    "date": {
+                        "start": start_date,
+                        "end": end_date
+                    }
                 }
                 notion_helper.update_page(
                     page_id=notion_book.get("page_id"),
@@ -218,11 +224,9 @@ def insert_book():
         else:
             print(f"插入{book.get('书名')}")
             cover = subject.get("pic").get("large")
-            book["封面"] = cover
-            book["简介"] = subject.get("intro")
             press = []
-            for i in subject.get("press"):
-                press.extend(i.split(","))
+            if "press" in subject:
+                press.extend(subject["press"].split(","))
             book["出版社"] = press
             book["类型"] = subject.get("type")
             if result.get("tags"):
@@ -241,8 +245,10 @@ def insert_book():
                 ]
             properties = utils.get_properties(book, book_properties_type_dict)
             properties["日期"] = {
-                "start": create_time.to_iso8601_string() if book["状态"] == "在读" else None,
-                "end": create_time.to_iso8601_string() if book["状态"] == "读过" else None
+                "date": {
+                    "start": create_time.to_iso8601_string() if book["状态"] == "在读" else None,
+                    "end": create_time.to_iso8601_string() if book["状态"] == "读过" else None
+                }
             }
             parent = {
                 "database_id": notion_helper.book_database_id,
@@ -264,4 +270,6 @@ if __name__ == "__main__":
         insert_movie()
     else:
         insert_book()
+
+
 
