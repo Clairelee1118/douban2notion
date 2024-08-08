@@ -1,27 +1,163 @@
+import argparse
+import json
+import os
 import pendulum
+from retrying import retry
+import requests
+from notion_helper import NotionHelper
 import utils
-from notion_helper import notion_helper, book_properties_type_dict, get_icon
 
-# 配置豆瓣账号和书籍状态
-douban_name = "your_douban_account"
-book_status = {
-    "collect": "读过",
-    "do": "在读",
-    "wish": "想读"
-}
+DOUBAN_API_HOST = os.getenv("DOUBAN_API_HOST", "frodo.douban.com")
+DOUBAN_API_KEY = os.getenv("DOUBAN_API_KEY", "0ac44ae016490db2204ce0a042db2916")
+
+from config import movie_properties_type_dict,book_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
+from utils import get_icon
+
 rating = {
-    "1": "很差",
-    "2": "较差",
-    "3": "还行",
-    "4": "推荐",
-    "5": "力荐"
+    1: "⭐️",
+    2: "⭐️⭐️",
+    3: "⭐️⭐️⭐️",
+    4: "⭐️⭐️⭐️⭐️",
+    5: "⭐️⭐️⭐️⭐️⭐️",
 }
-TAG_ICON_URL = "tag_icon_url"
-USER_ICON_URL = "user_icon_url"
+movie_status = {
+    "mark": "想看",
+    "doing": "在看",
+    "done": "看过",
+}
+book_status = {
+    "mark": "想读",
+    "doing": "在读",
+    "done": "读过",
+}
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 
-def fetch_subjects(douban_name, category, status):
-    # 假设这个函数从豆瓣API获取数据并返回
-    return []
+headers = {
+    "host": DOUBAN_API_HOST,
+    "authorization": f"Bearer {AUTH_TOKEN}" if AUTH_TOKEN else "",
+    "user-agent": "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 15_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.16(0x18001023) NetType/WIFI Language/zh_CN",
+    "referer": "https://servicewechat.com/wx2f9b06c1de1ccfca/84/page-frame.html",
+}
+
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def fetch_subjects(user, type_, status):
+    offset = 0
+    page = 0
+    url = f"https://{DOUBAN_API_HOST}/api/v2/user/{user}/interests"
+    total = 0
+    results = []
+    while True:
+        params = {
+            "type": type_,
+            "count": 50,
+            "status": status,
+            "start": offset,
+            "apiKey": DOUBAN_API_KEY,
+        }
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.ok:
+            response = response.json()
+            interests = response.get("interests")
+            if len(interests)==0:
+                break
+            results.extend(interests)
+            print(f"total = {total}")
+            print(f"size = {len(results)}")
+            page += 1
+            offset = page * 50
+    return results
+
+
+
+def insert_movie():
+    notion_movies = notion_helper.query_all(database_id=notion_helper.movie_database_id)
+    notion_movie_dict = {}
+    for i in notion_movies:
+        movie = {}
+        for key, value in i.get("properties").items():
+            movie[key] = utils.get_property_value(value)
+        notion_movie_dict[movie.get("豆瓣链接")] = {
+            "短评": movie.get("短评"),
+            "状态": movie.get("状态"),
+            "日期": movie.get("日期"),
+            "评分": movie.get("评分"),
+            "page_id": i.get("id")
+        }
+    print(f"notion {len(notion_movie_dict)}")
+    results = []
+    for i in movie_status.keys():
+        results.extend(fetch_subjects(douban_name, "movie", i))
+
+    for result in results:
+        movie = {}
+        subject = result.get("subject")
+        movie["电影名"] = subject.get("title")
+        create_time = result.get("create_time")
+        create_time = pendulum.parse(create_time,tz=utils.tz)
+        #时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
+        create_time = create_time.replace(second=0)
+        movie["日期"] = create_time.int_timestamp
+        movie["豆瓣链接"] = subject.get("url")
+        movie["状态"] = movie_status.get(result.get("status"))
+        if result.get("rating"):
+            movie["评分"] = rating.get(result.get("rating").get("value"))
+        if result.get("comment"):
+            movie["短评"] = result.get("comment")
+        if notion_movie_dict.get(movie.get("豆瓣链接")):
+            notion_movive = notion_movie_dict.get(movie.get("豆瓣链接"))
+            if (
+                notion_movive.get("日期") != movie.get("日期")
+                or notion_movive.get("短评") != movie.get("短评")
+                or notion_movive.get("状态") != movie.get("状态")
+                or notion_movive.get("评分") != movie.get("评分")
+            ):
+                properties = utils.get_properties(movie, movie_properties_type_dict)
+                notion_helper.get_date_relation(properties,create_time)
+                notion_helper.update_page(
+                    page_id=notion_movive.get("page_id"),
+                    properties=properties
+            )
+
+        else:
+            print(f"插入{movie.get('电影名')}")
+            cover = subject.get("pic").get("large")
+            movie["封面"] = cover
+            movie["类型"] = subject.get("type")
+            if subject.get("genres"):
+                movie["分类"] = [
+                    notion_helper.get_relation_id(
+                        x, notion_helper.category_database_id, TAG_ICON_URL
+                    )
+                    for x in subject.get("genres")
+                ]
+            if subject.get("actors"):
+                l = []
+                actors = subject.get("actors")[0:100]
+                for actor in actors:
+                    if actor.get("name"):
+                        if "/" in actor.get("name"):
+                            l.extend(actor.get("name").split("/"))
+                        else:
+                            l.append(actor.get("name"))  
+                movie["演员"] = l
+            if subject.get("directors"):
+                movie["导演"] = [
+                    notion_helper.get_relation_id(
+                        x.get("name"), notion_helper.director_database_id, USER_ICON_URL
+                    )
+                    for x in subject.get("directors")[0:100]
+                ]
+            properties = utils.get_properties(movie, movie_properties_type_dict)
+            notion_helper.get_date_relation(properties,create_time)
+            parent = {
+                "database_id": notion_helper.movie_database_id,
+                "type": "database_id",
+            }
+            notion_helper.create_page(
+                parent=parent, properties=properties, icon=get_icon(cover)
+            )
+
 
 def insert_book():
     notion_books = notion_helper.query_all(database_id=notion_helper.book_database_id)
@@ -37,7 +173,7 @@ def insert_book():
             "评分": book.get("评分"),
             "page_id": i.get("id")
         }
-    print(f"Notion books count: {len(notion_book_dict)}")
+    print(f"notion {len(notion_book_dict)}")
     results = []
     for i in book_status.keys():
         results.extend(fetch_subjects(douban_name, "book", i))
@@ -46,8 +182,10 @@ def insert_book():
         subject = result.get("subject")
         book["书名"] = subject.get("title")
         create_time = result.get("create_time")
-        create_time = pendulum.parse(create_time, tz=utils.tz)
+        create_time = pendulum.parse(create_time,tz=utils.tz)
+        #时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
         create_time = create_time.replace(second=0)
+        book["日期"] = create_time.int_timestamp
         book["豆瓣链接"] = subject.get("url")
         book["状态"] = book_status.get(result.get("status"))
         if result.get("rating"):
@@ -55,39 +193,28 @@ def insert_book():
         if result.get("comment"):
             book["短评"] = result.get("comment")
         if notion_book_dict.get(book.get("豆瓣链接")):
-            notion_book = notion_book_dict.get(book.get("豆瓣链接"))
-            start_date = None
-            end_date = None
-            if book["状态"] == "在读":
-                start_date = create_time.to_iso8601_string()
-            elif book["状态"] == "读过":
-                end_date = create_time.to_iso8601_string()
-                start_date = notion_book.get("日期").get("start") if notion_book.get("日期") else None
-
+            notion_movive = notion_book_dict.get(book.get("豆瓣链接"))
             if (
-                notion_book.get("日期") != {"start": start_date, "end": end_date}
-                or notion_book.get("短评") != book.get("短评")
-                or notion_book.get("状态") != book.get("状态")
-                or notion_book.get("评分") != book.get("评分")
+                notion_movive.get("日期") != book.get("日期")
+                or notion_movive.get("短评") != book.get("短评")
+                or notion_movive.get("状态") != book.get("状态")
+                or notion_movive.get("评分") != book.get("评分")
             ):
                 properties = utils.get_properties(book, book_properties_type_dict)
-                properties["日期"] = {
-                    "date": {
-                        "start": start_date,
-                        "end": end_date
-                    }
-                }
-                print(f"Updating page with ID {notion_book.get('page_id')}, properties: {properties}")
+                notion_helper.get_date_relation(properties,create_time)
                 notion_helper.update_page(
-                    page_id=notion_book.get("page_id"),
+                    page_id=notion_movive.get("page_id"),
                     properties=properties
-                )
+            )
+
         else:
-            print(f"Inserting new book: {book.get('书名')}")
+            print(f"插入{book.get('书名')}")
             cover = subject.get("pic").get("large")
+            book["封面"] = cover
+            book["简介"] = subject.get("intro")
             press = []
-            if "press" in subject:
-                press.extend(subject["press"].split(","))
+            for i in subject.get("press"):
+                press.extend(i.split(","))
             book["出版社"] = press
             book["类型"] = subject.get("type")
             if result.get("tags"):
@@ -105,40 +232,25 @@ def insert_book():
                     for x in subject.get("author")[0:100]
                 ]
             properties = utils.get_properties(book, book_properties_type_dict)
-            properties["日期"] = {
-                "date": {
-                    "start": create_time.to_iso8601_string() if book["状态"] == "在读" else None,
-                    "end": create_time.to_iso8601_string() if book["状态"] == "读过" else None
-                }
-            }
+            notion_helper.get_date_relation(properties,create_time)
             parent = {
                 "database_id": notion_helper.book_database_id,
                 "type": "database_id",
             }
-            print(f"Creating new page, properties: {properties}")
             notion_helper.create_page(
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
 
-def get_properties(data, properties_type_dict):
-    print(f"Input data: {data}")
-    properties = {}
-    for key, value in data.items():
-        if key in properties_type_dict:
-            property_type = properties_type_dict[key]
-            if property_type == "date":
-                if value:
-                    properties[key] = {"date": {"start": value, "end": None}}
-                else:
-                    properties[key] = {"date": {"start": None, "end": None}}
-            elif property_type == "rich_text":
-                properties[key] = {"rich_text": [{"text": {"content": value}}]}
-            else:
-                properties[key] = {property_type: value}
-    print(f"Processed properties: {properties}")
-    return properties
 
 if __name__ == "__main__":
-    insert_book()
-
-from notion_helper import notion_helper, book_properties_type_dict, get_icon
+    parser = argparse.ArgumentParser()
+    parser.add_argument("type")
+    options = parser.parse_args()
+    type = options.type
+    is_movie = True if type=="movie" else False
+    notion_helper = NotionHelper(type)
+    douban_name = os.getenv("DOUBAN_NAME", None)
+    if is_movie:
+        insert_movie()
+    else:
+        insert_book()
