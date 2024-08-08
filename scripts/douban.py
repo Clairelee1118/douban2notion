@@ -270,6 +270,20 @@ if __name__ == "__main__":
         insert_movie()
     else:
         insert_book()
-
-
-
+def get_properties(data, properties_type_dict):
+    print(f"Input data: {data}")
+    properties = {}
+    for key, value in data.items():
+        if key in properties_type_dict:
+            property_type = properties_type_dict[key]
+            if property_type == "date":
+                # 处理日期字段
+                properties[key] = {"date": {"start": value, "end": None}}
+            elif property_type == "rich_text":
+                # 处理富文本字段
+                properties[key] = {"rich_text": [{"text": {"content": value}}]}
+            # 添加更多类型的处理逻辑
+            else:
+                properties[key] = {property_type: value}
+    print(f"Processed properties: {properties}")
+    return properties
