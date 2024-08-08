@@ -141,3 +141,4 @@ def get_properties(data, properties_type_dict):
 if __name__ == "__main__":
     insert_book()
 
+from notion_helper import notion_helper, book_properties_type_dict, get_icon
