@@ -27,6 +27,7 @@ USER_ICON_URL = "https://www.notion.so/icons/user-circle-filled_gray.svg"
 TARGET_ICON_URL = "https://www.notion.so/icons/target_red.svg"
 BOOKMARK_ICON_URL = "https://www.notion.so/icons/bookmark_gray.svg"
 
+
 class NotionHelper:
     database_name_dict = {
         "MOVIE_DATABASE_NAME": "电影",
@@ -41,9 +42,8 @@ class NotionHelper:
     }
     database_id_dict = {}
     image_dict = {}
-
-    def __init__(self, type):
-        is_movie = True if type == "movie" else False
+    def __init__(self,type):
+        is_movie = True if type=="movie" else False
         page_url = os.getenv("NOTION_MOVIE_URL") if is_movie else os.getenv("NOTION_BOOK_URL")
         notion_token = os.getenv("NOTION_TOKEN")
         if not notion_token:
@@ -56,7 +56,7 @@ class NotionHelper:
         self.page_id = self.extract_page_id(page_url)
         self.search_database(self.page_id)
         for key in self.database_name_dict.keys():
-            if os.getenv(key) is not None and os.getenv(key) != "":
+            if os.getenv(key) != None and os.getenv(key) != "":
                 self.database_name_dict[key] = os.getenv(key)
         self.book_database_id = self.database_id_dict.get(
             self.database_name_dict.get("BOOK_DATABASE_NAME")
@@ -93,7 +93,6 @@ class NotionHelper:
         # 将值写入环境文件
         with open(env_file, "a") as file:
             file.write(f"DATABASE_ID={database_id}\n")
-
     def extract_page_id(self, notion_url):
         # 正则表达式匹配 32 个字符的 Notion page_id
         match = re.search(
@@ -105,12 +104,14 @@ class NotionHelper:
         else:
             raise Exception(f"获取NotionID失败，请检查输入的Url是否正确")
 
+
     def search_database(self, block_id):
         print(block_id)
         children = self.client.blocks.children.list(block_id=block_id)["results"]
         # 遍历子块
         for child in children:
             # 检查子块的类型
+
             if child["type"] == "child_database":
                 self.database_id_dict[
                     child.get("child_database").get("title")
@@ -121,7 +122,6 @@ class NotionHelper:
             # 如果子块有子块，递归调用函数
             if "has_children" in child and child["has_children"]:
                 self.search_database(child["id"])
-
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def update_heatmap(self, block_id, url):
         # 更新 image block 的链接
@@ -177,7 +177,7 @@ class NotionHelper:
         return self.get_relation_id(
             day, self.day_database_id, TARGET_ICON_URL, properties
         )
-
+    
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_relation_id(self, name, id, icon, properties={}):
         key = f"{id}{name}"
@@ -195,6 +195,8 @@ class NotionHelper:
             page_id = response.get("results")[0].get("id")
         self.__cache[key] = page_id
         return page_id
+
+
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def update_book_page(self, page_id, properties):
@@ -233,6 +235,7 @@ class NotionHelper:
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def delete_block(self, block_id):
         return self.client.blocks.delete(block_id=block_id)
+
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def query_all_by_book(self, database_id, filter):
@@ -289,3 +292,4 @@ class NotionHelper:
                 self.get_day_relation_id(date),
             ]
         )
+
