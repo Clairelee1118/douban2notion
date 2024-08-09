@@ -82,6 +82,7 @@ def insert_movie():
             "状态": movie.get("状态"),
             "日期": movie.get("日期"),
             "评分": movie.get("评分"),
+            "豆瓣评分": movie.get("豆瓣评分"),  # 新增字段
             "page_id": i.get("id")
         }
     print(f"notion {len(notion_movie_dict)}")
@@ -95,13 +96,13 @@ def insert_movie():
         movie["电影名"] = subject.get("title")
         create_time = result.get("create_time")
         create_time = pendulum.parse(create_time,tz=utils.tz)
-        #时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
         create_time = create_time.replace(second=0)
         movie["日期"] = create_time.int_timestamp
         movie["豆瓣链接"] = subject.get("url")
         movie["状态"] = movie_status.get(result.get("status"))
         if result.get("rating"):
             movie["评分"] = rating.get(result.get("rating").get("value"))
+            movie["豆瓣评分"] = result.get("rating").get("value")  # 新增逻辑：保存豆瓣评分原始数值
         if result.get("comment"):
             movie["短评"] = result.get("comment")
         if notion_movie_dict.get(movie.get("豆瓣链接")):
@@ -111,14 +112,14 @@ def insert_movie():
                 or notion_movive.get("短评") != movie.get("短评")
                 or notion_movive.get("状态") != movie.get("状态")
                 or notion_movive.get("评分") != movie.get("评分")
+                or notion_movive.get("豆瓣评分") != movie.get("豆瓣评分")  # 检查豆瓣评分是否更新
             ):
                 properties = utils.get_properties(movie, movie_properties_type_dict)
                 notion_helper.get_date_relation(properties,create_time)
                 notion_helper.update_page(
                     page_id=notion_movive.get("page_id"),
                     properties=properties
-            )
-
+                )
         else:
             print(f"插入{movie.get('电影名')}")
             cover = subject.get("pic").get("large")
@@ -157,6 +158,7 @@ def insert_movie():
             notion_helper.create_page(
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
+
 
 
 def insert_book():
