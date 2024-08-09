@@ -82,7 +82,7 @@ def insert_movie():
             "状态": movie.get("状态"),
             "日期": movie.get("日期"),
             "评分": movie.get("评分"),
-            "豆瓣评分": movie.get("豆瓣评分"),  # 新增字段
+            "豆瓣评分": movie.get("豆瓣评分"),  # 确保读取现有的豆瓣评分
             "page_id": i.get("id")
         }
     print(f"notion {len(notion_movie_dict)}")
@@ -102,7 +102,7 @@ def insert_movie():
         movie["状态"] = movie_status.get(result.get("status"))
         if result.get("rating"):
             movie["评分"] = rating.get(result.get("rating").get("value"))
-            movie["豆瓣评分"] = result.get("rating").get("value")  # 新增逻辑：保存豆瓣评分原始数值
+            movie["豆瓣评分"] = result.get("rating").get("value")  # 保存豆瓣评分为数字
         if result.get("comment"):
             movie["短评"] = result.get("comment")
         if notion_movie_dict.get(movie.get("豆瓣链接")):
@@ -158,7 +158,6 @@ def insert_movie():
             notion_helper.create_page(
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
-
 
 
 def insert_book():
