@@ -129,12 +129,12 @@ def insert_movie(douban_name,notion_helper):
                 cover = cover.rsplit('.', 1)[0] + '.webp'
             movie["封面"] = cover
             # 修改类型
+            movie["类型"] = subject.get("type")
 if subject.get("type") == "movie":
-    movie["类型"] = "Movie"
+    movie["类型"] = "Movie"  # 对应Notion中select字段的选项名称
 elif subject.get("type") == "tv":
-    movie["类型"] = "TV series"
-else:
-    movie["类型"] = subject.get("type")  # 保持其他类型不变
+    movie["类型"] = "TV Series"  # 对应Notion中select字段的选项名称
+
 
             if subject.get("genres"):
                 movie["分类"] = [
