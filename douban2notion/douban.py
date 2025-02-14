@@ -128,7 +128,14 @@ def insert_movie(douban_name,notion_helper):
             if not cover.endswith('.webp'):
                 cover = cover.rsplit('.', 1)[0] + '.webp'
             movie["封面"] = cover
-            movie["类型"] = subject.get("type")
+            # 修改类型
+if subject.get("type") == "movie":
+    movie["类型"] = "Movie"
+elif subject.get("type") == "tv":
+    movie["类型"] = "TV series"
+else:
+    movie["类型"] = subject.get("type")  # 保持其他类型不变
+
             if subject.get("genres"):
                 movie["分类"] = [
                     notion_helper.get_relation_id(
