@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip uninstall -y douban2notion
-          pip install git+https://github.com/你的GitHub用户名/douban2notion
+          pip install git+https://github.com/Clairelee1118/douban2notion
 
       - name: douban movie sync
         run: |
