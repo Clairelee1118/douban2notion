@@ -6,6 +6,8 @@ import os
 import re
 import requests
 import base64
+import tempfile
+
 from douban2notion.config import (
     RICH_TEXT,
     URL,
@@ -20,10 +22,7 @@ from douban2notion.config import (
 )
 import pendulum
 
-MAX_LENGTH = (
-    1024  # NOTION 2000个字符限制https://developers.notion.com/reference/request-limits
-)
-
+MAX_LENGTH = 1024
 tz = "Asia/Shanghai"
 
 
@@ -124,6 +123,7 @@ def get_callout(content, style, colorStyle, reviewId):
         emoji = "⭐"
     if reviewId is not None:
         emoji = "✍️"
+
     color = "default"
     if colorStyle == 1:
         color = "red"
@@ -135,6 +135,7 @@ def get_callout(content, style, colorStyle, reviewId):
         color = "green"
     elif colorStyle == 5:
         color = "yellow"
+
     return {
         "type": "callout",
         "callout": {
@@ -208,6 +209,7 @@ def get_properties(dict1, dict2):
         type = dict2.get(key)
         if value is None:
             continue
+
         property = None
         if type == TITLE:
             property = {"title": [{"type": "text", "text": {"content": value[:MAX_LENGTH]}}]}
@@ -220,12 +222,14 @@ def get_properties(dict1, dict2):
         elif type == FILES:
             property = {"files": [{"type": "external", "name": "Cover", "external": {"url": value}}]}
         elif type == DATE:
-            property = {
-                "date": {
-                    "start": pendulum.from_timestamp(value, tz="Asia/Shanghai").to_datetime_string(),
-                    "time_zone": "Asia/Shanghai",
+            ts = str_to_timestamp(value)
+            if ts:
+                property = {
+                    "date": {
+                        "start": pendulum.from_timestamp(ts, tz="Asia/Shanghai").to_datetime_string(),
+                        "time_zone": "Asia/Shanghai",
+                    }
                 }
-            }
         elif type == URL:
             property = {"url": value}
         elif type == SELECT:
@@ -234,8 +238,10 @@ def get_properties(dict1, dict2):
             property = {"multi_select": [{"name": name} for name in value]}
         elif type == RELATION:
             property = {"relation": [{"id": id} for id in value]}
+
         if property:
             properties[key] = property
+
     return properties
 
 
@@ -244,6 +250,7 @@ def get_property_value(property):
     content = property.get(type)
     if content is None:
         return None
+
     if type in ["title", "rich_text"]:
         return content[0].get("plain_text") if len(content) > 0 else None
     elif type in ["status", "select"]:
@@ -258,9 +265,9 @@ def get_property_value(property):
         return content
 
 
-# ✅ 关键修复点就在这里
+# ✅ 核心修复：Invalid DateTime 不再炸
 def str_to_timestamp(date):
-    if not date or date in ["Invalid DateTime", "None", ""]:
+    if not date or date in ("Invalid DateTime", "None", ""):
         return None
     try:
         dt = pendulum.parse(date)
@@ -269,20 +276,40 @@ def str_to_timestamp(date):
         return None
 
 
-upload_url = 'https://wereadassets.malinkang.com/'
+# ===============================
+# ✅ 为封面 file 上传准备的函数
+# （下一步 book / movie 会用）
+# ===============================
+def download_cover_to_file(url):
+    if not url:
+        return None
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            return None
+        suffix = os.path.splitext(url)[-1] or ".jpg"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.write(r.content)
+        tmp.close()
+        return tmp.name
+    except Exception:
+        return None
+
+
+upload_url = "https://wereadassets.malinkang.com/"
 
 
 def upload_image(folder_path, filename, file_path):
-    with open(file_path, 'rb') as file:
-        content_base64 = base64.b64encode(file.read()).decode('utf-8')
-    data = {'file': content_base64, 'filename': filename, 'folder': folder_path}
+    with open(file_path, "rb") as file:
+        content_base64 = base64.b64encode(file.read()).decode("utf-8")
+    data = {"file": content_base64, "filename": filename, "folder": folder_path}
     response = requests.post(upload_url, json=data)
     return response.text if response.status_code == 200 else None
 
 
 def url_to_md5(url):
     md5_hash = hashlib.md5()
-    md5_hash.update(url.encode('utf-8'))
+    md5_hash.update(url.encode("utf-8"))
     return md5_hash.hexdigest()
 
 
@@ -303,7 +330,7 @@ def download_image(url, save_dir="cover"):
 
 def upload_cover(url):
     cover_file = download_image(url)
-    return upload_image("cover", cover_file.split('/')[-1], cover_file)
+    return upload_image("cover", cover_file.split("/")[-1], cover_file)
 
 
 def get_embed(url):
