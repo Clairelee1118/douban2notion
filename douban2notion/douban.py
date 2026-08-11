@@ -182,12 +182,13 @@ def insert_movie(douban_name,notion_helper):
                 ]
             properties = utils.get_properties(movie, movie_properties_type_dict)
             notion_helper.get_date_relation(properties,create_time)
+            icon = notion_helper.attach_cover(properties, cover)
             parent = {
                 "database_id": notion_helper.movie_database_id,
                 "type": "database_id",
             }
             notion_helper.create_page(
-                parent=parent, properties=properties, icon=get_icon(cover)
+                parent=parent, properties=properties, icon=icon
             )
 def get_imdb(link):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36'}
@@ -244,7 +245,6 @@ def insert_book(douban_name,notion_helper):
             notion_movive = notion_book_dict.get(book.get("豆瓣链接"))
             if (
                 notion_movive.get("封面") is None
-                or notion_movive.get("封面") != book.get("封面")
                 or notion_movive.get("日期") != book.get("日期")
                 or notion_movive.get("短评") != book.get("短评")
                 or notion_movive.get("状态") != book.get("状态")
@@ -282,12 +282,13 @@ def insert_book(douban_name,notion_helper):
                 ]
             properties = utils.get_properties(book, book_properties_type_dict)
             notion_helper.get_date_relation(properties,create_time)
+            icon = notion_helper.attach_cover(properties, cover)
             parent = {
                 "database_id": notion_helper.book_database_id,
                 "type": "database_id",
             }
             notion_helper.create_page(
-                parent=parent, properties=properties, icon=get_icon(cover)
+                parent=parent, properties=properties, icon=icon
             )
 
      
