@@ -1,6 +1,10 @@
+import hashlib
 import logging
+import mimetypes
 import os
 import re
+
+import requests
 
 from notion_client import Client
 from retrying import retry
@@ -46,6 +50,7 @@ class NotionHelper:
                 notion_token = os.getenv("MOVIE_NOTION_TOKEN")
             else:
                 notion_token = os.getenv("BOOK_NOTION_TOKEN")
+        self.notion_token = notion_token
         self.client = Client(auth=notion_token, log_level=logging.ERROR)
         self.__cache = {}
         self.page_id = self.extract_page_id(page_url)
@@ -216,6 +221,80 @@ class NotionHelper:
         return page_id
 
 
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def upload_cover(self, url):
+        """Download a Douban cover and upload it to Notion-managed storage."""
+        image_response = requests.get(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.douban.com/",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            },
+            timeout=30,
+        )
+        image_response.raise_for_status()
+
+        content_type = image_response.headers.get("Content-Type", "image/jpeg")
+        content_type = content_type.split(";", 1)[0].strip()
+        extension = mimetypes.guess_extension(content_type) or ".jpg"
+        if extension == ".jpe":
+            extension = ".jpg"
+        filename = hashlib.sha256(url.encode("utf-8")).hexdigest() + extension
+
+        api_headers = {
+            "Authorization": f"Bearer {self.notion_token}",
+            "Notion-Version": "2026-03-11",
+        }
+        create_response = requests.post(
+            "https://api.notion.com/v1/file_uploads",
+            headers={**api_headers, "Content-Type": "application/json"},
+            json={
+                "mode": "single_part",
+                "filename": filename,
+                "content_type": content_type,
+            },
+            timeout=30,
+        )
+        create_response.raise_for_status()
+        upload_id = create_response.json()["id"]
+
+        send_response = requests.post(
+            f"https://api.notion.com/v1/file_uploads/{upload_id}/send",
+            headers=api_headers,
+            files={"file": (filename, image_response.content, content_type)},
+            timeout=60,
+        )
+        send_response.raise_for_status()
+        return upload_id
+
+    def attach_cover(self, properties, url):
+        """Attach one uploaded cover to a files property and return its page icon."""
+        upload_id = self.upload_cover(url)
+        properties["封面"] = {
+            "files": [
+                {
+                    "type": "file_upload",
+                    "name": "Cover",
+                    "file_upload": {"id": upload_id},
+                }
+            ]
+        }
+        return {"type": "file_upload", "file_upload": {"id": upload_id}}
+
+    def repair_page_cover(self, page_id, url):
+        properties = {}
+        icon = self.attach_cover(properties, url)
+        return self.client.pages.update(
+            page_id=page_id,
+            properties=properties,
+            icon=icon,
+        )
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def update_book_page(self, page_id, properties):
