@@ -17,6 +17,7 @@ setup(
         "console_scripts": [
             "douban = douban2notion.douban:main",
             "heatmap = douban2notion.update_heatmap:main",
+            "repair-covers = douban2notion.repair_covers:main",
         ],
     },
     author="malinkang",
