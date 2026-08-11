@@ -74,11 +74,25 @@ jobs:
       matrix:
         include:
           - media_type: movie
-            status: 在看
-            limit: 52
+            status: 看过
+            limit: 500
+            shard_count: 3
+            shard_index: 0
+          - media_type: movie
+            status: 看过
+            limit: 500
+            shard_count: 3
+            shard_index: 1
+          - media_type: movie
+            status: 看过
+            limit: 500
+            shard_count: 3
+            shard_index: 2
           - media_type: book
-            status: 在读
-            limit: 13
+            status: 读过
+            limit: 500
+            shard_count: 1
+            shard_index: 0
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env: *notion-env
@@ -97,4 +111,4 @@ jobs:
       - name: Validate Python
         run: python -m compileall -q douban2notion
       - name: Repair prioritized covers
-        run: repair-covers "${{ matrix.media_type }}" --status "${{ matrix.status }}" --limit "${{ matrix.limit }}"
+        run: repair-covers "${{ matrix.media_type }}" --status "${{ matrix.status }}" --limit "${{ matrix.limit }}" --shard-count "${{ matrix.shard_count }}" --shard-index "${{ matrix.shard_index }}"
