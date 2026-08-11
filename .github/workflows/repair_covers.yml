@@ -17,10 +17,6 @@ on:
         default: "1"
         type: string
 
-  push:
-    paths:
-      - ".cover-test-trigger"
-
 permissions:
   contents: read
 
@@ -57,7 +53,4 @@ jobs:
         run: python -m compileall -q douban2notion
 
       - name: Repair covers
-        run: |
-          MEDIA_TYPE="${{ inputs.media_type }}"
-          LIMIT="${{ inputs.limit }}"
-          repair-covers "${MEDIA_TYPE:-movie}" --limit "${LIMIT:-1}"
+        run: repair-covers "${{ inputs.media_type }}" --limit "${{ inputs.limit }}"
