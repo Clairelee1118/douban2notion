@@ -14,7 +14,7 @@ def get_external_cover(page):
     return cover.get("external", {}).get("url")
 
 
-def repair_covers(type_, limit):
+def repair_covers(type_, limit, statuses=None):
     notion_helper = NotionHelper(type_)
     database_id = (
         notion_helper.movie_database_id
@@ -24,7 +24,21 @@ def repair_covers(type_, limit):
     repaired = 0
     failed = 0
 
-    for page in notion_helper.query_all(database_id=database_id):
+    if statuses:
+        status_filter = {
+            "or": [
+                {"property": "状态", "status": {"equals": status}}
+                for status in statuses
+            ]
+        }
+        pages = notion_helper.query_all_by_book(
+            database_id=database_id,
+            filter=status_filter,
+        )
+    else:
+        pages = notion_helper.query_all(database_id=database_id)
+
+    for page in pages:
         cover_url = get_external_cover(page)
         if not cover_url:
             continue
@@ -65,10 +79,16 @@ def main():
         default=1,
         help="Maximum number of covers to repair in this run.",
     )
+    parser.add_argument(
+        "--status",
+        action="append",
+        dest="statuses",
+        help="Only repair this Notion status; repeat for multiple statuses.",
+    )
     args = parser.parse_args()
     if args.limit < 1 or args.limit > 200:
         parser.error("--limit must be between 1 and 200")
-    repair_covers(args.type, args.limit)
+    repair_covers(args.type, args.limit, args.statuses)
 
 
 if __name__ == "__main__":
