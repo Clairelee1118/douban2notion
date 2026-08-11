@@ -280,10 +280,13 @@ def get_property_value(property):
         return content.get("name")
     elif type == "files":
         # 不考虑多文件情况
-        if len(content) > 0 and content[0].get("type") == "external":
-            return content[0].get("external").get("url")
-        else:
+        if len(content) == 0:
             return None
+        if content[0].get("type") == "external":
+            return content[0].get("external").get("url")
+        if content[0].get("type") in ("file", "file_upload"):
+            return "notion-managed-file"
+        return None
     elif type == "date":
         return str_to_timestamp(content.get("start"))
     else:
