@@ -2,35 +2,25 @@ name: repair Notion covers
 
 on:
   workflow_dispatch:
-    inputs:
-      media_type:
-        description: Database to repair
-        required: true
-        default: movie
-        type: choice
-        options:
-          - movie
-          - book
-      status:
-        description: Exact Notion status (optional)
-        required: false
-        default: ""
-        type: string
-      limit:
-        description: Maximum covers to migrate in this run
-        required: true
-        default: "1"
-        type: string
+  push:
+    branches:
+      - agent/refresh-broken-wishlist-covers
+    paths:
+      - .refresh-wishlist-trigger
 
 permissions:
   contents: read
 
 concurrency:
-  group: repair-notion-covers-manual
+  group: repair-wishlist-wikidata
   cancel-in-progress: false
 
 jobs:
-  repair:
+  refresh-wishlist:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -53,10 +43,5 @@ jobs:
           pip install .
       - name: Validate Python
         run: python -m compileall -q douban2notion
-      - name: Repair covers
-        run: |
-          STATUS_ARG=()
-          if [ -n "${{ inputs.status }}" ]; then
-            STATUS_ARG=(--status "${{ inputs.status }}")
-          fi
-          repair-covers "${{ inputs.media_type }}" --limit "${{ inputs.limit }}" "${STATUS_ARG[@]}"
+      - name: Refresh IMDb-matched wishlist covers
+        run: repair-covers movie --status "想看" --limit 500 --shard-count 4 --shard-index "${{ matrix.shard_index }}"
