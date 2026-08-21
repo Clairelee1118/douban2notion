@@ -46,14 +46,24 @@ def get_text_property(page, name):
     return str(value).strip() if value is not None else ""
 
 
-def refresh_wikidata_cover(imdb_id):
-    if not imdb_id or not re.fullmatch(r"tt\\d+", imdb_id):
-        raise ValueError("No valid IMDb ID is available")
+def refresh_wikidata_cover(imdb_id, subject_url):
+    identifiers = []
+    if imdb_id and re.fullmatch(r"tt\\d+", imdb_id):
+        identifiers.append(f'{{ ?item wdt:P345 "{imdb_id}" . }}')
+
+    subject_match = re.search(r"/subject/(\\d+)", subject_url or "")
+    if subject_match:
+        identifiers.append(
+            f'{{ ?item wdt:P4529 "{subject_match.group(1)}" . }}'
+        )
+
+    if not identifiers:
+        raise ValueError("No valid IMDb or Douban ID is available")
 
     query = (
-        'SELECT ?image WHERE { '
-        f'?item wdt:P345 "{imdb_id}" ; wdt:P18 ?image . '
-        "} LIMIT 1"
+        "SELECT ?image WHERE { "
+        + " UNION ".join(identifiers)
+        + " ?item wdt:P18 ?image . } LIMIT 1"
     )
     response = requests.get(
         "https://query.wikidata.org/sparql",
@@ -190,7 +200,7 @@ def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
             if not repaired_source and type_ == "movie":
                 imdb_id = get_text_property(page, "IMDB")
                 try:
-                    wikidata_url = refresh_wikidata_cover(imdb_id)
+                    wikidata_url = refresh_wikidata_cover(imdb_id, subject_url)
                     notion_helper.repair_page_cover(page["id"], wikidata_url)
                     repaired_source = f"Wikidata via {imdb_id}"
                 except Exception as exc:
