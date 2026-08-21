@@ -1,4 +1,6 @@
 import argparse
+import json
+import re
 import time
 
 import requests
@@ -31,21 +33,62 @@ def get_url_property(page, name):
     return page.get("properties", {}).get(name, {}).get("url")
 
 
-def refresh_douban_cover(subject_url):
-    if not subject_url:
-        raise ValueError("No Douban subject URL is available")
-    response = requests.get(subject_url, headers=DOUBAN_HEADERS, timeout=30)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+def extract_cover_from_html(html):
+    soup = BeautifulSoup(html, "html.parser")
     for selector, attribute in (
         ('meta[property="og:image"]', "content"),
         ('meta[name="twitter:image"]', "content"),
         ("#mainpic img", "src"),
+        (".subject-card img", "src"),
     ):
         node = soup.select_one(selector)
         if node and node.get(attribute):
             return node[attribute]
-    raise ValueError("No current cover was found on the Douban subject page")
+
+    for node in soup.select('script[type="application/ld+json"]'):
+        try:
+            data = json.loads(node.string or "")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        records = data if isinstance(data, list) else [data]
+        for record in records:
+            if isinstance(record, dict) and record.get("image"):
+                image = record["image"]
+                if isinstance(image, list):
+                    image = image[0]
+                if isinstance(image, dict):
+                    image = image.get("url")
+                if isinstance(image, str):
+                    return image
+    return None
+
+
+def refresh_douban_cover(subject_url):
+    if not subject_url:
+        raise ValueError("No Douban subject URL is available")
+
+    subject_match = re.search(r"/subject/(\\d+)", subject_url)
+    candidates = [subject_url]
+    if subject_match:
+        subject_id = subject_match.group(1)
+        kind = "book" if "book.douban.com" in subject_url else "movie"
+        candidates.extend(
+            [
+                f"https://m.douban.com/{kind}/subject/{subject_id}/",
+                f"https://www.douban.com/doubanapp/dispatch?uri=/subject/{subject_id}/",
+            ]
+        )
+
+    for candidate in candidates:
+        try:
+            response = requests.get(candidate, headers=DOUBAN_HEADERS, timeout=30)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+        cover_url = extract_cover_from_html(response.text)
+        if cover_url:
+            return cover_url
+    raise ValueError("No current cover was found on Douban desktop or mobile pages")
 
 
 def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
