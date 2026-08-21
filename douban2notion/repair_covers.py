@@ -33,6 +33,34 @@ def get_url_property(page, name):
     return page.get("properties", {}).get(name, {}).get("url")
 
 
+def get_text_property(page, name):
+    prop = page.get("properties", {}).get(name, {})
+    values = prop.get("rich_text") or prop.get("title") or []
+    return values[0].get("plain_text", "").strip() if values else ""
+
+
+def refresh_wikidata_cover(imdb_id):
+    if not imdb_id or not re.fullmatch(r"tt\\d+", imdb_id):
+        raise ValueError("No valid IMDb ID is available")
+
+    query = (
+        'SELECT ?image WHERE { '
+        f'?item wdt:P345 "{imdb_id}" ; wdt:P18 ?image . '
+        "} LIMIT 1"
+    )
+    response = requests.get(
+        "https://query.wikidata.org/sparql",
+        params={"query": query, "format": "json"},
+        headers={"User-Agent": "douban2notion-cover-repair/1.0"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    bindings = response.json().get("results", {}).get("bindings", [])
+    if not bindings:
+        raise ValueError(f"No Wikidata poster is available for {imdb_id}")
+    return bindings[0]["image"]["value"]
+
+
 def extract_cover_from_html(html):
     soup = BeautifulSoup(html, "html.parser")
     for selector, attribute in (
@@ -134,19 +162,38 @@ def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
         subject_url = get_url_property(page, "豆瓣链接")
 
         try:
+            repaired_source = None
+            source_errors = []
+
             if cover_url:
                 try:
                     notion_helper.repair_page_cover(page["id"], cover_url)
-                except requests.RequestException:
+                    repaired_source = "existing Douban URL"
+                except Exception as exc:
+                    source_errors.append(f"existing URL: {exc}")
+
+            if not repaired_source:
+                try:
                     refreshed_url = refresh_douban_cover(subject_url)
                     notion_helper.repair_page_cover(page["id"], refreshed_url)
-                    print(f"refreshed source: {title}")
-            else:
-                refreshed_url = refresh_douban_cover(subject_url)
-                notion_helper.repair_page_cover(page["id"], refreshed_url)
-                print(f"recovered missing source: {title}")
+                    repaired_source = "current Douban page"
+                except Exception as exc:
+                    source_errors.append(f"Douban page: {exc}")
+
+            if not repaired_source and type_ == "movie":
+                imdb_id = get_text_property(page, "IMDB")
+                try:
+                    wikidata_url = refresh_wikidata_cover(imdb_id)
+                    notion_helper.repair_page_cover(page["id"], wikidata_url)
+                    repaired_source = f"Wikidata via {imdb_id}"
+                except Exception as exc:
+                    source_errors.append(f"Wikidata: {exc}")
+
+            if not repaired_source:
+                raise ValueError("; ".join(source_errors))
+
             repaired += 1
-            print(f"repaired {repaired}: {title}")
+            print(f"repaired {repaired}: {title} ({repaired_source})")
         except Exception as exc:
             failed += 1
             print(f"failed: {title}: {type(exc).__name__}: {exc}")
