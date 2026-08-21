@@ -44,7 +44,7 @@ def refresh_douban_cover(subject_url):
     ):
         node = soup.select_one(selector)
         if node and node.get(attribute):
-            return node[attribute].replace("/s_ratio_poster/", "/l_ratio_poster/")
+            return node[attribute]
     raise ValueError("No current cover was found on the Douban subject page")
 
 
