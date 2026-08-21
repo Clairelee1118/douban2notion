@@ -36,7 +36,14 @@ def get_url_property(page, name):
 def get_text_property(page, name):
     prop = page.get("properties", {}).get(name, {})
     values = prop.get("rich_text") or prop.get("title") or []
-    return values[0].get("plain_text", "").strip() if values else ""
+    if values:
+        return values[0].get("plain_text", "").strip()
+
+    formula = prop.get("formula") or {}
+    value = formula.get("string")
+    if value is None:
+        value = prop.get("url")
+    return str(value).strip() if value is not None else ""
 
 
 def refresh_wikidata_cover(imdb_id):
