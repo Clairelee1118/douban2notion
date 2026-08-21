@@ -48,10 +48,10 @@ def get_text_property(page, name):
 
 def refresh_wikidata_cover(imdb_id, subject_url):
     identifiers = []
-    if imdb_id and re.fullmatch(r"tt\\d+", imdb_id):
+    if imdb_id and re.fullmatch(r"tt\d+", imdb_id):
         identifiers.append(f'{{ ?item wdt:P345 "{imdb_id}" . }}')
 
-    subject_match = re.search(r"/subject/(\\d+)", subject_url or "")
+    subject_match = re.search(r"/subject/(\d+)", subject_url or "")
     if subject_match:
         identifiers.append(
             f'{{ ?item wdt:P4529 "{subject_match.group(1)}" . }}'
@@ -112,7 +112,7 @@ def refresh_douban_cover(subject_url):
     if not subject_url:
         raise ValueError("No Douban subject URL is available")
 
-    subject_match = re.search(r"/subject/(\\d+)", subject_url)
+    subject_match = re.search(r"/subject/(\d+)", subject_url)
     candidates = [subject_url]
     if subject_match:
         subject_id = subject_match.group(1)
