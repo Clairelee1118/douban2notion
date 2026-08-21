@@ -1,17 +1,51 @@
 import argparse
 import time
 
+import requests
+from bs4 import BeautifulSoup
+
 from douban2notion.notion_helper import NotionHelper
 
 
-def get_external_cover(page):
+DOUBAN_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://www.douban.com/",
+}
+
+
+def get_cover_state(page):
     files = page.get("properties", {}).get("封面", {}).get("files", [])
     if not files:
-        return None
+        return "missing", None
     cover = files[0]
     if cover.get("type") != "external":
-        return None
-    return cover.get("external", {}).get("url")
+        return "internal", None
+    return "external", cover.get("external", {}).get("url")
+
+
+def get_url_property(page, name):
+    return page.get("properties", {}).get(name, {}).get("url")
+
+
+def refresh_douban_cover(subject_url):
+    if not subject_url:
+        raise ValueError("No Douban subject URL is available")
+    response = requests.get(subject_url, headers=DOUBAN_HEADERS, timeout=30)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    for selector, attribute in (
+        ('meta[property="og:image"]', "content"),
+        ('meta[name="twitter:image"]', "content"),
+        ("#mainpic img", "src"),
+    ):
+        node = soup.select_one(selector)
+        if node and node.get(attribute):
+            return node[attribute].replace("/s_ratio_poster/", "/l_ratio_poster/")
+    raise ValueError("No current cover was found on the Douban subject page")
 
 
 def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
@@ -43,8 +77,8 @@ def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
         if page_number % shard_count != shard_index:
             continue
 
-        cover_url = get_external_cover(page)
-        if not cover_url:
+        cover_state, cover_url = get_cover_state(page)
+        if cover_state == "internal":
             continue
 
         title_property = "电影名" if type_ == "movie" else "书名"
@@ -54,9 +88,20 @@ def repair_covers(type_, limit, statuses=None, shard_count=1, shard_index=0):
             .get("title", [])
         )
         title = title_parts[0].get("plain_text", "") if title_parts else ""
+        subject_url = get_url_property(page, "豆瓣链接")
 
         try:
-            notion_helper.repair_page_cover(page["id"], cover_url)
+            if cover_url:
+                try:
+                    notion_helper.repair_page_cover(page["id"], cover_url)
+                except requests.RequestException:
+                    refreshed_url = refresh_douban_cover(subject_url)
+                    notion_helper.repair_page_cover(page["id"], refreshed_url)
+                    print(f"refreshed source: {title}")
+            else:
+                refreshed_url = refresh_douban_cover(subject_url)
+                notion_helper.repair_page_cover(page["id"], refreshed_url)
+                print(f"recovered missing source: {title}")
             repaired += 1
             print(f"repaired {repaired}: {title}")
         except Exception as exc:
