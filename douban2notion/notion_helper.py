@@ -242,6 +242,11 @@ class NotionHelper:
 
         content_type = image_response.headers.get("Content-Type", "image/jpeg")
         content_type = content_type.split(";", 1)[0].strip()
+        if not content_type.startswith("image/"):
+            raise requests.HTTPError(
+                f"Cover URL returned non-image content type: {content_type}",
+                response=image_response,
+            )
         extension = mimetypes.guess_extension(content_type) or ".jpg"
         if extension == ".jpe":
             extension = ".jpg"
